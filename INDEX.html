@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steno CLE Provider Status Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #2E7D32;
+    --green-light: #C8E6C9;
+    --green-hover: #1B5E20;
+    --yellow: #F9A825;
+    --yellow-light: #FFF9C4;
+    --yellow-hover: #F57F17;
+    --red: #C62828;
+    --red-light: #FFCDD2;
+    --red-hover: #B71C1C;
+    --gray: #9E9E9E;
+    --gray-light: #F5F5F5;
+    --bg: #f0f2f5;
+    --panel: #ffffff;
+    --text: #1a1a2e;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    --radius: 12px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-left h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .header-left p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+
+  .updated {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--gray-light);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .map-card {
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    border: 1px solid var(--border);
+  }
+
+  #map svg {
+    width: 100%;
+    display: block;
+  }
+
+  svg path {
+    cursor: pointer;
+    stroke: #ffffff;
+    stroke-width: 0.8px;
+    transition: opacity 0.15s ease, stroke-width 0.1s ease;
+  }
+
+  svg path:hover { opacity: 0.78; stroke-width: 1.8px; stroke: #fff; }
+  svg path.no-data { cursor: default; }
+  svg path.no-data:hover { opacity: 1; stroke-width: 0.8px; }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .legend-card {
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .legend-card h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .legend-item:last-child { margin-bottom: 0; }
+
+  .legend-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .legend-item strong { display: block; font-weight: 600; font-size: 13px; }
+  .legend-item span { color: var(--text-muted); font-size: 12px; }
+
+  .info-card {
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    border: 1px solid var(--border);
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .info-card h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .state-placeholder {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 12px 0;
+  }
+
+  .state-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: none;
+  }
+
+  .state-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 14px;
+  }
+
+  .state-status-badge .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+
+  .guru-links { display: flex; flex-direction: column; gap: 8px; }
+
+  .guru-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all 0.15s ease;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .guru-btn svg { flex-shrink: 0; }
+
+  .guru-btn-green {
+    background: var(--green-light);
+    color: var(--green-hover);
+    border-color: #A5D6A7;
+  }
+  .guru-btn-green:hover { background: #A5D6A7; }
+
+  .guru-btn-yellow {
+    background: var(--yellow-light);
+    color: var(--yellow-hover);
+    border-color: #FFF176;
+  }
+  .guru-btn-yellow:hover { background: #FFF176; }
+
+  .guru-btn-red {
+    background: var(--red-light);
+    color: var(--red-hover);
+    border-color: #EF9A9A;
+  }
+  .guru-btn-red:hover { background: #EF9A9A; }
+
+  .guru-btn-gray {
+    background: #F5F5F5;
+    color: #757575;
+    border-color: #E0E0E0;
+  }
+  .guru-btn-gray:hover { background: #E0E0E0; }
+
+  .tooltip {
+    position: fixed;
+    background: rgba(26,26,46,0.92);
+    color: #fff;
+    padding: 7px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+    backdrop-filter: blur(4px);
+  }
+
+  .tooltip strong { display: block; font-size: 13px; margin-bottom: 2px; }
+  .tooltip span { opacity: 0.75; font-size: 11px; }
+
+  .stats-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .stat-chip {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  .stat-chip .num {
+    font-size: 20px;
+    font-weight: 600;
+    display: block;
+  }
+
+  .stat-chip .lbl {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    display: block;
+  }
+
+  .stat-chip.s-green .num { color: var(--green); }
+  .stat-chip.s-yellow .num { color: var(--yellow-hover); }
+  .stat-chip.s-red .num { color: var(--red); }
+
+  @media (max-width: 900px) {
+    .main-layout { grid-template-columns: 1fr; }
+    .sidebar { flex-direction: row; flex-wrap: wrap; }
+    .legend-card, .info-card { flex: 1; min-width: 240px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Steno CLE Provider Status</h1>
+    <p>Click a state to view its Guru card and accreditation details</p>
+  </div>
+  <div class="updated">Updated February 24, 2026</div>
+</header>
+
+<div class="stats-row">
+  <div class="stat-chip s-green"><span class="num" id="cnt-green">—</span><span class="lbl">Full Capability</span></div>
+  <div class="stat-chip s-yellow"><span class="num" id="cnt-yellow">—</span><span class="lbl">Existing / Approved Jurisdiction</span></div>
+  <div class="stat-chip s-red"><span class="num" id="cnt-red">—</span><span class="lbl">No New Clients</span></div>
+</div>
+
+<div class="main-layout">
+  <div class="map-card">
+    <div id="map"></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="legend-card">
+      <h3>Legend</h3>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--green);"></div>
+        <div><strong>Green</strong><span>Full operational capability. New firms and clients accepted.</span></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--yellow);"></div>
+        <div><strong>Yellow</strong><span>Service for existing clients in Green states only. No new firm locations or client acquisition.</span></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--red);"></div>
+        <div><strong>Red</strong><span>No new firm locations or client acquisition, but can ask for existing client exceptions.</span></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--gray);"></div>
+        <div><strong>Gray</strong><span>No Guru card available yet.</span></div>
+      </div>
+    </div>
+
+    <div class="info-card" id="infoCard">
+      <h3>State Details</h3>
+      <div class="state-placeholder" id="statePlaceholder">← Click a state on the map</div>
+      <div id="stateDetail" style="display:none;">
+        <div class="state-name" id="stateName"></div>
+        <div class="state-status-badge" id="stateBadge"><div class="dot" id="badgeDot"></div><span id="badgeText"></span></div>
+        <div class="guru-links" id="guruLinks"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const stateData = {
+  "Alabama":        { status: "yellow", urls: [] },
+  "Alaska":         { status: "yellow", urls: [] },
+  "Arizona":        { status: "yellow", urls: [] },
+  "Arkansas":       { status: "red",    urls: [] },
+  "California":     { status: "green",  urls: [{ label: "California — Guru Card", href: "https://app.getguru.com/card/cKd7qeRi/CALIFORNIA-" }] },
+  "Colorado":       { status: "green",  urls: [] },
+  "Connecticut":    { status: "yellow", urls: [] },
+  "Delaware":       { status: "green",  urls: [] },
+  "Florida":        { status: "green",  urls: [{ label: "Florida — Guru Card", href: "https://app.getguru.com/card/i8EeL5bT/FLORIDA" }] },
+  "Georgia":        { status: "green",  urls: [{ label: "Georgia — Guru Card", href: "https://app.getguru.com/card/T49EM45c/GEORGIA" }] },
+  "Hawaii":         { status: "yellow", urls: [] },
+  "Idaho":          { status: "red",    urls: [] },
+  "Illinois":       { status: "green",  urls: [] },
+  "Indiana":        { status: "red",    urls: [] },
+  "Iowa":           { status: "yellow", urls: [] },
+  "Kansas":         { status: "yellow", urls: [] },
+  "Kentucky":       { status: "yellow", urls: [] },
+  "Louisiana":      { status: "yellow", urls: [] },
+  "Maine":          { status: "red",    urls: [] },
+  "Maryland":       { status: "green",  urls: [] },
+  "Massachusetts":  { status: "green",  urls: [] },
+  "Michigan":       { status: "green",  urls: [] },
+  "Minnesota":      { status: "green",  urls: [] },
+  "Mississippi":    { status: "red",    urls: [] },
+  "Missouri":       { status: "green",  urls: [{ label: "Missouri — Guru Card", href: "https://app.getguru.com/card/iaq98rdT/MISSOURI" }] },
+  "Montana":        { status: "yellow", urls: [] },
+  "Nebraska":       { status: "yellow", urls: [] },
+  "Nevada":         { status: "green",  urls: [] },
+  "New Hampshire":  { status: "red",    urls: [] },
+  "New Jersey":     { status: "green",  urls: [] },
+  "New Mexico":     { status: "red",    urls: [] },
+  "New York":       { status: "green",  urls: [{ label: "New York — Guru Card", href: "https://app.getguru.com/card/Tdr9A7kc/NEW-YORK" }] },
+  "North Carolina": { status: "green",  urls: [{ label: "North Carolina — Guru Card", href: "https://app.getguru.com/card/cKd9eBqi/NORTH-CAROLINA" }] },
+  "North Dakota":   { status: "yellow", urls: [] },
+  "Ohio":           { status: "green",  urls: [{ label: "Ohio — Guru Card", href: "https://app.getguru.com/card/cBob4BRi/OHIO" }] },
+  "Oklahoma":       { status: "red",    urls: [] },
+  "Oregon":         { status: "green",  urls: [{ label: "Oregon — Guru Card", href: "https://app.getguru.com/card/Tdr9EzRc/OREGON" }] },
+  "Pennsylvania":   { status: "green",  urls: [
+    { label: "Pennsylvania — Guru Card", href: "https://app.getguru.com/card/iRXq9rRT/PENNSYLVANIA" },
+    { label: "Philadelphia — Guru Card", href: "PLACEHOLDER_PHILADELPHIA" }
+  ]},
+  "Rhode Island":   { status: "yellow", urls: [] },
+  "South Carolina": { status: "green",  urls: [] },
+  "South Dakota":   { status: "red",    urls: [] },
+  "Tennessee":      { status: "green",  urls: [] },
+  "Texas":          { status: "green",  urls: [{ label: "Texas — Guru Card", href: "https://app.getguru.com/card/iq9r7ypT/TEXAS" }] },
+  "Utah":           { status: "green",  urls: [{ label: "Utah — Guru Card", href: "https://app.getguru.com/card/ck5EAdki/UTAH" }] },
+  "Vermont":        { status: "red",    urls: [] },
+  "Virginia":       { status: "green",  urls: [] },
+  "Washington":     { status: "green",  urls: [{ label: "Washington — Guru Card", href: "https://app.getguru.com/card/ibqX9bXT/WASHINGTON" }] },
+  "West Virginia":  { status: "yellow", urls: [] },
+  "Wisconsin":      { status: "yellow", urls: [] },
+  "Wyoming":        { status: "red",    urls: [] },
+  "District of Columbia": { status: "green", urls: [] }
+};
+
+const statusColor  = { green: "#2E7D32", yellow: "#F9A825", red: "#C62828", none: "#BDBDBD" };
+const statusLabel  = { green: "Full Capability", yellow: "Existing / Approved Jurisdiction", red: "No New Clients", none: "No Data" };
+const btnClass     = { green: "guru-btn-green", yellow: "guru-btn-yellow", red: "guru-btn-red", none: "guru-btn-gray" };
+
+const stateNameMap = {
+  "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California",
+  "08":"Colorado","09":"Connecticut","10":"Delaware","11":"District of Columbia",
+  "12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois",
+  "18":"Indiana","19":"Iowa","20":"Kansas","21":"Kentucky","22":"Louisiana",
+  "23":"Maine","24":"Maryland","25":"Massachusetts","26":"Michigan","27":"Minnesota",
+  "28":"Mississippi","29":"Missouri","30":"Montana","31":"Nebraska","32":"Nevada",
+  "33":"New Hampshire","34":"New Jersey","35":"New Mexico","36":"New York",
+  "37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma","41":"Oregon",
+  "42":"Pennsylvania","44":"Rhode Island","45":"South Carolina","46":"South Dakota",
+  "47":"Tennessee","48":"Texas","49":"Utah","50":"Vermont","51":"Virginia",
+  "53":"Washington","54":"West Virginia","55":"Wisconsin","56":"Wyoming"
+};
+
+function getFill(name) {
+  const d = stateData[name];
+  return d ? statusColor[d.status] : statusColor.none;
+}
+
+function getStatus(name) {
+  const d = stateData[name];
+  return d ? d.status : "none";
+}
+
+const arrowIcon = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 9.5L9.5 2.5M9.5 2.5H4.5M9.5 2.5V7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const lockIcon  = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="5.5" width="8" height="5.5" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M4 5.5V3.5a2 2 0 014 0v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+
+function showState(name) {
+  const d = stateData[name];
+  const status = d ? d.status : "none";
+  document.getElementById("statePlaceholder").style.display = "none";
+  const detail = document.getElementById("stateDetail");
+  detail.style.display = "block";
+  document.getElementById("stateName").style.display = "block";
+  document.getElementById("stateName").textContent = name;
+
+  const badge = document.getElementById("stateBadge");
+  badge.style.background = status === "green" ? "#C8E6C9" : status === "yellow" ? "#FFF9C4" : status === "red" ? "#FFCDD2" : "#F5F5F5";
+  badge.style.color = status === "green" ? "#1B5E20" : status === "yellow" ? "#F57F17" : status === "red" ? "#B71C1C" : "#757575";
+  document.getElementById("badgeDot").style.background = statusColor[status] || statusColor.none;
+  document.getElementById("badgeText").textContent = statusLabel[status] || statusLabel.none;
+
+  const linksDiv = document.getElementById("guruLinks");
+  linksDiv.innerHTML = "";
+
+  if (d && d.urls && d.urls.length > 0) {
+    d.urls.forEach(u => {
+      const isPlaceholder = u.href === "PLACEHOLDER_PHILADELPHIA";
+      const btn = document.createElement(isPlaceholder ? "div" : "a");
+      btn.className = `guru-btn ${isPlaceholder ? "guru-btn-gray" : btnClass[status]}`;
+      if (!isPlaceholder) {
+        btn.href = u.href;
+        btn.target = "_blank";
+        btn.rel = "noopener";
+      }
+      btn.innerHTML = `<span>${u.label}${isPlaceholder ? " <em style='font-weight:400;font-size:11px;'>(URL pending)</em>" : ""}</span>${isPlaceholder ? lockIcon : arrowIcon}`;
+      linksDiv.appendChild(btn);
+    });
+  } else {
+    const msg = document.createElement("div");
+    msg.style.cssText = "font-size:13px;color:#9E9E9E;padding:8px 0;";
+    msg.textContent = "No Guru card linked yet for this state.";
+    linksDiv.appendChild(msg);
+  }
+}
+
+async function init() {
+  const us = await d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json");
+  const projection = d3.geoAlbersUsa().scale(1280).translate([490, 300]);
+  const path = d3.geoPath().projection(projection);
+  const states = topojson.feature(us, us.objects.states);
+
+  const svg = d3.select("#map").append("svg").attr("viewBox", "0 0 960 600");
+  const tip = document.getElementById("tooltip");
+
+  svg.selectAll("path")
+    .data(states.features)
+    .enter().append("path")
+    .attr("d", path)
+    .attr("fill", d => {
+      const name = stateNameMap[String(d.id).padStart(2,"0")];
+      return getFill(name);
+    })
+    .attr("class", d => {
+      const name = stateNameMap[String(d.id).padStart(2,"0")];
+      const s = stateData[name];
+      return (!s || !s.urls || s.urls.length === 0) ? "no-data" : "";
+    })
+    .on("mousemove", function(event, d) {
+      const name = stateNameMap[String(d.id).padStart(2,"0")] || "Unknown";
+      const status = getStatus(name);
+      const hasCard = stateData[name] && stateData[name].urls && stateData[name].urls.length > 0;
+      tip.style.display = "block";
+      tip.style.left = (event.clientX + 14) + "px";
+      tip.style.top  = (event.clientY - 36) + "px";
+      tip.innerHTML  = `<strong>${name}</strong><span>${statusLabel[status] || "No data"}${hasCard ? " · Guru card available" : ""}</span>`;
+    })
+    .on("mouseleave", () => { tip.style.display = "none"; })
+    .on("click", (event, d) => {
+      const name = stateNameMap[String(d.id).padStart(2,"0")] || "Unknown";
+      showState(name);
+    });
+
+  // count stats
+  let g=0, y=0, r=0;
+  Object.values(stateData).forEach(v => {
+    if(v.status==="green") g++;
+    else if(v.status==="yellow") y++;
+    else if(v.status==="red") r++;
+  });
+  document.getElementById("cnt-green").textContent = g;
+  document.getElementById("cnt-yellow").textContent = y;
+  document.getElementById("cnt-red").textContent = r;
+}
+
+init();
+</script>
+</body>
+</html>
